@@ -1,0 +1,54 @@
+1) First Create a Sqoop Job for an incremental load 
+
+--sqoop has a meta store script and db whose location can be found under sqoop-site.xml
+--in meta store for each sqoop job that we have created has a saved parameters entires present for e.g.. last incremental date
+
+--MYSQL ( bigdata is the schema inside which DimCustomer table is present)
+
+
+sqoop job --create custsqoopjob \
+-- import \
+--connect jdbc:mysql://192.168.74.1/bigdata \
+--username root \
+--password root \
+--table DimCustomer \
+--target-dir /bigdata_project_batch1/ \
+--check-column Loaddate \
+--merge-key CustomerID  \
+--incremental lastmodified \
+--last-value 1 \
+--as-textfile \
+--m 2;
+
+
+2) Create an external table which will point to the textfile directory location sqooped by step 1.
+--This table is stage table which will hold only changed records or new records .
+
+
+create external table customerdim_stage1(CustomerID int,CustomerAltID string,CustomerName string,Gender string,Loaddate string)
+row format delimited
+fields terminated by ','
+lines terminated by '\n'
+location '/bigdata_project_batch1/';
+
+	
+3) Create a main table which will be final warehouse table which will hold all the SCD2 historical data .
+--This table will be a partition table based on the updated date Column of table at RDBMS level.
+--This will be an ORC format table.
+--EFF_FR_DT and EFF_TO_DT will be the dates between which a particular record was active
+--ACTIVE_FLAG is another column which will hold value 'Y'( ACTIVE)   or 'N'(INACTIVE)
+	
+create table customerdim_main(CustomerID int,CustomerAltID string,CustomerName string,Gender string,Loaddate TIMESTAMP,EFF_FR_DT date,EFF_TO_DT date,ACTIVE_FLAG string)
+partitioned by (Updatedate date)
+STORED AS ORC
+tblproperties("transactional"="true");
+	
+
+4) Place all the files under  "/usr/tmp/"    location 
+->ETL_JOB_CUST_DIM.sh
+->ETLDATA_ETL_CUST_DIM_LOAD.hql
+->Parameters.txt
+
+5)SET PERMISSION CHMOD 777 on all files .
+
+6)RUN ETL_JOB_CUST_DIM.sh
